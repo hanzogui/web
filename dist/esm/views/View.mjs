@@ -1,0 +1,8 @@
+import { validStyles } from "@hanzogui/helpers";
+import { createComponent } from "../createComponent.mjs";
+const View = createComponent({
+  acceptsClassName: true,
+  validStyles
+});
+export { View };
+//# sourceMappingURL=View.mjs.map

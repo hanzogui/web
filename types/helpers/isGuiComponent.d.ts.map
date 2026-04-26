@@ -1,0 +1,1 @@
+{"version":3,"file":"isGuiComponent.d.ts","sourceRoot":"","sources":["../../src/helpers/isGuiComponent.tsx"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,YAAY,EAAE,MAAM,UAAU,CAAA;AAE5C,wBAAgB,cAAc,CAAC,CAAC,EAC9B,IAAI,EAAE,CAAC,EACP,IAAI,CAAC,EAAE,MAAM,GACZ,IAAI,IAAI,CAAC,GAAG;IACb,YAAY,EAAE,YAAY,CAAA;CAC3B,CAGA"}

@@ -1,0 +1,168 @@
+import { tokenCategories } from "@hanzogui/helpers";
+import { getConfig } from "../config.mjs";
+import { isVariable } from "../createVariable.mjs";
+import { getFontsForLanguage } from "./getVariantExtras.mjs";
+import { normalizeColor } from "./normalizeColor.mjs";
+const fontShorthand = {
+  fontSize: "size",
+  fontWeight: "weight"
+};
+let didLogMissingToken = false;
+const colorKeys = tokenCategories.color;
+let _lastFontFamilyToken = null;
+function getLastFontFamilyToken() {
+  return _lastFontFamilyToken;
+}
+function setLastFontFamilyToken(value) {
+  _lastFontFamilyToken = value;
+}
+const getTokenForKey = (key, value, styleProps, styleState) => {
+  let resolveAs = styleProps.resolveValues || "none";
+  if (resolveAs === "none") {
+    return value;
+  }
+  let opacityModifier;
+  if (key in colorKeys) {
+    const slashIdx = value.indexOf("/");
+    if (slashIdx > 0) {
+      const raw = value.slice(slashIdx + 1);
+      if (raw.length > 0) {
+        const num = Number(raw);
+        if (!Number.isNaN(num)) {
+          opacityModifier = Math.max(0, Math.min(1, num / 100));
+          value = value.slice(0, slashIdx);
+        }
+      }
+    }
+  }
+  const {
+    theme,
+    conf = getConfig(),
+    context,
+    fontFamily,
+    staticConfig
+  } = styleState;
+  const themeValue = theme ? theme[value] || theme[value.slice(1)] : void 0;
+  const tokensParsed = conf.tokensParsed;
+  let valOrVar;
+  let hasSet = false;
+  const customTokenAccept = staticConfig?.accept?.[key];
+  if (customTokenAccept) {
+    const val = themeValue ?? tokensParsed[customTokenAccept]?.[value];
+    if (val != null) {
+      resolveAs = "value";
+      valOrVar = val;
+      hasSet = true;
+    }
+  }
+  if (themeValue) {
+    if (resolveAs === "except-theme") {
+      return value;
+    }
+    valOrVar = themeValue;
+    if (process.env.NODE_ENV === "development" && styleState.debug === "verbose") {
+      globalThis.guiAvoidTracking = true;
+      console.info(` - resolving ${key} to theme value ${value} resolveAs ${resolveAs}`, valOrVar);
+      globalThis.guiAvoidTracking = false;
+    }
+    hasSet = true;
+  } else {
+    if (value in conf.specificTokens) {
+      hasSet = true;
+      valOrVar = conf.specificTokens[value];
+    } else {
+      switch (key) {
+        case "fontFamily":
+          {
+            const fontsParsed = context?.language ? getFontsForLanguage(conf.fontsParsed, context.language) : conf.fontsParsed;
+            valOrVar = fontsParsed[value]?.family || value;
+            setLastFontFamilyToken(value);
+            hasSet = true;
+            break;
+          }
+        case "fontSize":
+        case "lineHeight":
+        case "letterSpacing":
+        case "fontWeight":
+          {
+            const fam = fontFamily || conf.defaultFontToken;
+            if (fam) {
+              const fontsParsed = context?.language ? getFontsForLanguage(conf.fontsParsed, context.language) : conf.fontsParsed;
+              const font = fontsParsed[fam] || fontsParsed[conf.defaultFontToken];
+              valOrVar = font?.[fontShorthand[key] || key]?.[value] || value;
+              hasSet = true;
+            }
+            break;
+          }
+      }
+      for (const cat in tokenCategories) {
+        if (key in tokenCategories[cat]) {
+          const res = tokensParsed[cat]?.[value];
+          if (res != null) {
+            valOrVar = res;
+            hasSet = true;
+          } else {
+            if (process.env.NODE_ENV === "development") {
+              if (process.env.GUI_DISABLE_MISSING_TOKEN_LOG !== "1") {
+                if (!didLogMissingToken) {
+                  didLogMissingToken = true;
+                  console.groupCollapsed(`[hanzo-gui] Warning: missing token ${key} in category ${cat} - ${value} (open for details)`);
+                  console.info(`Note: this could just be due to you not setting all the theme tokens GUI expects, which is harmless, but
+                    it also often can be because you have a duplicated GUI in your bundle, which can cause tricky bugs.`);
+                  console.info(`To see if you have duplicated dependencies, in Chrome DevTools hit CMD+P and type GuiProvider.
+                    If you see both a .cjs and a .mjs entry, it's duplicated.`);
+                  console.info(`You can debug that issue by opening the .mjs and .cjs files and setting a breakpoint at the top of each.`);
+                  console.info(`We only log this warning one time as it's sometimes harmless, to disable this log entirely set process.env.GUI_DISABLE_MISSING_TOKEN_LOG=1.`);
+                  console.groupEnd();
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (!hasSet) {
+      const spaceVar = tokensParsed.space[value];
+      if (spaceVar != null) {
+        valOrVar = spaceVar;
+        hasSet = true;
+      }
+    }
+  }
+  if (hasSet) {
+    let out = resolveVariableValue(key, valOrVar, resolveAs);
+    if (opacityModifier !== void 0 && opacityModifier < 1) {
+      out = normalizeColor(String(out), opacityModifier) ?? out;
+    }
+    if (process.env.NODE_ENV === "development" && styleState.debug === "verbose") {
+      globalThis.guiAvoidTracking = true;
+      console.info(`resolved`, resolveAs, valOrVar, out);
+      globalThis.guiAvoidTracking = false;
+    }
+    return out;
+  }
+  if (process.env.NODE_ENV === "development" && styleState.debug === "verbose") {
+    console.warn(`Warning: no token found for ${key}, omitting`);
+  }
+};
+function resolveVariableValue(key, valOrVar, resolveValues) {
+  if (resolveValues === "none") {
+    return valOrVar;
+  }
+  if (isVariable(valOrVar)) {
+    if (resolveValues === "value") {
+      return valOrVar.val;
+    }
+    const get = valOrVar?.get;
+    if (true) {
+      if (typeof get === "function") {
+        const resolveDynamicFor = resolveValues === "web" ? "web" : void 0;
+        return get(resolveDynamicFor);
+      }
+    }
+    return false ? valOrVar.val : valOrVar.variable;
+  }
+  return valOrVar;
+}
+export { getLastFontFamilyToken, getTokenForKey, resolveVariableValue, setLastFontFamilyToken };
+//# sourceMappingURL=getTokenForKey.mjs.map

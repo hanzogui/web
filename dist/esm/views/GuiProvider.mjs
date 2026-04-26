@@ -1,0 +1,69 @@
+import { useIsomorphicLayoutEffect } from "@hanzogui/constants";
+import { ClientOnly } from "@hanzogui/use-did-finish-ssr";
+import React, { useEffect } from "react";
+import { getSetting } from "../config.mjs";
+import { ComponentContext } from "../contexts/ComponentContext.mjs";
+import { stopAccumulatingRules } from "../helpers/insertStyleRule.mjs";
+import { updateMediaListeners } from "../hooks/useMedia.mjs";
+import { resolveAnimationDriver } from "../helpers/resolveAnimationDriver.mjs";
+import { GuiRoot } from "./GuiRoot.mjs";
+import { ThemeProvider } from "./ThemeProvider.mjs";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+let _cachedFirstKey;
+let _cachedConfig;
+function firstThemeKey(config) {
+  if (config !== _cachedConfig) {
+    _cachedConfig = config;
+    _cachedFirstKey = config?.themes ? Object.keys(config.themes)[0] : void 0;
+  }
+  return _cachedFirstKey;
+}
+function GuiProvider({
+  children,
+  disableInjectCSS,
+  config,
+  className,
+  defaultTheme: defaultThemeProp,
+  reset,
+  insets
+}) {
+  const defaultTheme = defaultThemeProp || firstThemeKey(config) || "light";
+  useIsomorphicLayoutEffect(() => {
+    stopAccumulatingRules();
+    updateMediaListeners();
+  }, []);
+  const memoizedInsets = React.useMemo(() => insets, [insets?.top, insets?.right, insets?.bottom, insets?.left]);
+  const defaultAnimationDriver = React.useMemo(() => resolveAnimationDriver(config?.animations), [config?.animations]);
+  useEffect(() => {
+    defaultAnimationDriver?.onMount?.();
+  }, []);
+  let contents = /* @__PURE__ */jsx(ComponentContext.Provider, {
+    animationDriver: defaultAnimationDriver,
+    insets: memoizedInsets,
+    children: /* @__PURE__ */jsx(ThemeProvider, {
+      defaultTheme,
+      reset,
+      className,
+      children: /* @__PURE__ */jsx(GuiRoot, {
+        theme: defaultTheme,
+        isRootRoot: true,
+        children
+      })
+    })
+  });
+  if (getSetting("disableSSR")) {
+    contents = /* @__PURE__ */jsx(ClientOnly, {
+      enabled: true,
+      children: contents
+    });
+  }
+  return /* @__PURE__ */jsxs(Fragment, {
+    children: [contents, config && !disableInjectCSS && /* @__PURE__ */jsx("style", {
+      precedence: "default",
+      href: "gui-css",
+      children: config.getCSS()
+    }, "gui-css")]
+  });
+}
+export { GuiProvider };
+//# sourceMappingURL=GuiProvider.mjs.map
